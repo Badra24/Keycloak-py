@@ -32,6 +32,14 @@ keycloak_admin = KeycloakAdmin(
 async def root(request: Request):
     return {"message": "Hello World"}
 
+@router.get("/get-token")
+async def get_token():
+    try:
+        getToken = keycloak_admin.get_token()
+        return getToken
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND , detail=str(e))
+
 
 @router.get("/get-realm")
 async def getRealmByName():
@@ -59,7 +67,6 @@ async def createRealm(payload : dict):
     try:
         existing_realm = keycloak_admin.get_realm(payload["realm"])
         if existing_realm:
-           
             return JSONResponse(content={"detail": "Realm already exists."}, status_code=409)
 
         # Realm belum ada, maka buat realm baru
@@ -92,20 +99,18 @@ async def deleteRealm(request : Request):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT , detail=str(e))
     
 
-@router.get("/getallUsers")
+@router.get("/getUsers")
 async def GetAllUsers():
     try:
         all_users = keycloak_admin.get_users()
         return JSONResponse(all_users)
         
     except Exception as e:
-        # Tangkap dan tangani kesalahan yang terjadi
         raise HTTPException(status_code=500, detail=str(e))
     
 @router.get("/getuser/{user_id}")
-async def GetUserbyId(user_id:str, ):
+async def GetUserbyId(user_id:str):
     try:
-
         if not user_id :
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND , detail="user not found")
         
@@ -135,7 +140,16 @@ async def UpdateUser(user_id : str ,payload: dict):
             raise HTTPException(status_code=404, detail=str(e))
         
 
-
+@router.patch("/update-user/{user_id}")
+async def UpdateUser(user_id : str ,payload: dict):
+    try:
+        
+        update_user = keycloak_admin.update_user(user_id=user_id, payload=payload)
+        return JSONResponse(content={'updated successfully' : update_user})
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+        
+    
 @router.delete("/userdelete/{user_id}")
 async def DeleteUser(user_id: str):
     try:
@@ -145,6 +159,66 @@ async def DeleteUser(user_id: str):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     
 
+
+#After set password user must change password to activate account
+@router.post("/userSetPassword")
+async def SubmitPassword(request: Request):
+    try:
+        user_id = request.query_params.get("user_id")
+        password = request.query_params.get("password")
+        
+        if not isinstance(user_id, str) or not isinstance(password, str):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="user_id and password must be strings")
+        
+        print(password)
+        print(user_id)
+        set_password = keycloak_admin.set_user_password(user_id=user_id, password=password)
+        return JSONResponse(content={'Set Password': set_password})
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"internal server error: {e}")
+        
+
+@router.get("/getUserCredentials")
+async def getUserCredentials(request:Request):
+    try :
+        
+        user_id = request._query_params.get("user_id")
+        
+        getCredential  = keycloak_admin.get_credentials(user_id=user_id)
+        
+        return JSONResponse(content={'getUserCredentials': getCredential})
+    
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT , 
+                            detail=str(e))
+    
+    
+@router.delete("/deleteUserCredentials")
+async def deleteUserCredentials(request:Request):
+    try:
+        user_id = request._query_params.get("user_id")
+        credential_id =  request._query_params.get("credential_id")
+        deleteUserCredentials  = keycloak_admin.delete_credential(user_id=user_id , 
+                                                                credential_id=credential_id)
+        return JSONResponse(content={'deleteUserCredentials Success':deleteUserCredentials})
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT , 
+                            detail=str(e))
+    
+
+
+@router.post("/user-logout")
+async def userLogout(request:Request):
+    try:
+        user_id = request._query_params.get("user_id")
+        logout = keycloak_admin.user_logout(user_id)
+        return JSONResponse(content={'logoutSuccess':logout})
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail=str(e))
+    
+    
 
 @router.get("/get-client/{client_id}")
 async def get_client(client_id: str):

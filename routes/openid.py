@@ -1,4 +1,5 @@
-from fastapi import  APIRouter, Depends, HTTPException , status
+from tkinter.tix import Form
+from fastapi import  Body,APIRouter, Depends, HTTPException , status
 from fastapi.responses import JSONResponse
 from keycloak.keycloak_openid import KeycloakOpenID
 import keycloak
@@ -30,28 +31,37 @@ keycloak_openid = KeycloakOpenID(
     client_id="client_id",
     client_secret_key="cEkusHWo67nU6PPpz0lhXjxNqrvLmmvo",
 )
-
-
-
 @router.get("/")
 async def root(request: Request):
     return {"message": "Hello World"}
 
-
-@router.get("/login")
-async def login():
-    
-    auth_url = keycloak_openid.auth_url(redirect_uri='http://localhost:8080')
-    
-    if not auth_url:
+@router.post("/login")
+async def login(username: str = Body(...), password: str = Body(...)):
+    try:
+        token = keycloak_openid.token(username=username, password=password, grant_type="password")
+        if token:
+            return JSONResponse(content={"access_token" : token["access_token"] ,
+                                         "refresh_token" : token["refresh_token"]
+                                         ,"token_type" : token["token_type"]})
+        else:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="Invalid credentials")
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=str(e))
         
-        raise UrlInvalid(
-            status_code=status.HTTP_409_CONFLICT,
-            reason=f"Invalid url: {auth_url}"
-        )
-    print("auth_url:", auth_url)
-
-    return RedirectResponse(auth_url)
+@router.post("/userInfo")
+async def userInfo(request: Request):
+    try:
+        token = request.headers.get("Authorization")
+        if token:
+            token = token.replace("Bearer ", "")
+            userInfo = keycloak_openid.userinfo(token=token)
+            return userInfo
+        else:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No token provided")
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.get("/callback")
