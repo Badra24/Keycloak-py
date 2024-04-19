@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from keycloak.keycloak_admin import KeycloakAdmin
 import keycloak
 import keycloak.exceptions
+from openai import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from fastapi import Query
@@ -16,15 +17,13 @@ from ErrorHandling.exceptions import (
 
 router = APIRouter()
 
-
-
-
 keycloak_admin = KeycloakAdmin(
     server_url="http://localhost:8080/admin",
     realm_name="master",
     client_id="admin-cli",
     username="admin",
-    password="admin",  
+    password="admin",
+    client_secret_key="cEkusHWo67nU6PPpz0lhXjxNqrvLmmvo"
 )
 
 
@@ -35,12 +34,19 @@ async def root(request: Request):
 @router.get("/get-token")
 async def get_token():
     try:
-        getToken = keycloak_admin.get_token()
-        return getToken
+        token = keycloak_admin.get_token()
+        if token is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token is null")
+        return token
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND , detail=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
+    """
+    
+    REALM
 
+    
+    """
 @router.get("/get-realm")
 async def getRealmByName():
     try:
@@ -59,7 +65,7 @@ async def getRealmByName(request: Request):
         return JSONResponse(content=realm_data)
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"realm : {str(e)}")
     
     
 @router.post("/create-realm")
@@ -98,6 +104,11 @@ async def deleteRealm(request : Request):
     except Exception as e :
         raise HTTPException(status_code=status.HTTP_409_CONFLICT , detail=str(e))
     
+
+    """
+    USERS
+
+    """
 
 @router.get("/getUsers")
 async def GetAllUsers():
@@ -219,7 +230,11 @@ async def userLogout(request:Request):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,detail=str(e))
     
     
-
+    
+    """
+    CLIENT
+    
+    """
 @router.get("/get-client/{client_id}")
 async def get_client(client_id: str):
     try:
@@ -239,7 +254,6 @@ async def get_client(client_id: str):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
 
 
 @router.patch("/update-client")
@@ -272,4 +286,40 @@ async def update_client(request: Request, payload: dict):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error: " + str(e)
         )
+
+    """
+    GROUP
+    """
     
+class GroupData(BaseModel):
+    payload: dict
+    parent: str = None
+    skip_exists: bool = False
+
+
+class AddUserGroup(BaseModel):
+    group_id: str
+    user_id: str
+
+@router.get('/groups')
+async def groups():
+    try:
+        get_groups = keycloak_admin.get_groups()
+        return JSONResponse(get_groups)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+@router.post("/create-group")
+async def create_group(group_data: GroupData):
+    try:
+        keycloak_admin.create_group(payload=group_data.payload, parent=group_data.parent, skip_exists=group_data.skip_exists)
+        return {"message": f"Group created successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/add-user-to-group")
+async def add_user_to_group(add_user_group: AddUserGroup):
+    try:
+        keycloak_admin.group_user_add(user_id=add_user_group.user_id, group_id=add_user_group.group_id)
+        return {"message": f"User with ID '{add_user_group.user_id}' added to group with ID '{add_user_group.group_id}'"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
